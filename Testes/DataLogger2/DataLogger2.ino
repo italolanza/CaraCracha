@@ -53,8 +53,8 @@ void setup()
     Serial.println("Couldn't find RTC");
     while (1);
   }
-	Serial.println("Cartao SD iniciado com sucesso!");
-	Serial.println("RTC iniciado com sucesso!");
+	Serial.println("Modulo cartao SD iniciado com sucesso!");
+	Serial.println("Modulo RTC iniciado com sucesso!");
 }
 
 void loop()
