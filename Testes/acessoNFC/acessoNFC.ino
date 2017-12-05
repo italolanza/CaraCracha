@@ -49,6 +49,7 @@ void setup()
     Serial.begin(115200);    
     nfc.begin();
     Serial.println("Modulo NFC iniciado com sucesso!");    
+    
 }
 
 void loop()
