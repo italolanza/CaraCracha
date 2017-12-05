@@ -17,7 +17,7 @@ const int thisMonth = 12;
 const int today     = 4;
 // ----------------------------- ~ Definição das funções a serem utilizadas ~ -------------------------------//
 void      imprimirInformacoesTAG(); //imprime as informações no cartão
-int       formatarTAG(); //formata Tag no formato NdefMessage
+void      formatarTAG(); //formata Tag no formato NdefMessage
 int       limparTAG(); //limpa a Tag inserindo um record vazio
 String    getIdentificationCode(NdefRecord record);
 String    getAcessType(NdefRecord record);
@@ -30,6 +30,9 @@ void      liberarAcesso();
 int       atualizarCartao(int _countLeft);
 int       testarCredencial(String ID);
 int       compararDatas(int _day, int _month, int _year);
+int       gravarCartaoCompleto(String _ID);
+int       gravarCartaoTemporario(String _ID, int _day, int _month, int _year);
+int       gravarCartaoLimitado(String _ID, int n);
 // ----------------------------- ~ Variaveis utilizads ~ -------------------------------//
 String nfcAcessType = "";
 String nfcIndentificationCode = "";
@@ -48,103 +51,114 @@ void setup()
 {
     Serial.begin(115200);    
     nfc.begin();
-    Serial.println("Modulo NFC iniciado com sucesso!");    
+    Serial.println("Modulo NFC iniciado com sucesso!");
+    //formatarTAG();
 }
 
 void loop()
 {
+  String tipo = "";
+  Serial.println("Selecione o tipo de cartao a ser gravado: ");
+  Serial.println("00. Accesso completo;");
+  Serial.println("01. Accesso temporario (valido até a data indicada);");
+  Serial.println("10. Accesso limitado (numero finito de vezes).");
+
+  while (Serial.available() == 0){/*nao faz nada, aguarda por uma entrada do serial*/}
+  tipo = Serial.readString();
+
+  Serial.print("Tipo escolhido: ");
+  Serial.println(tipo);
+
   Serial.println("Aproxime o cartao NFC próximo a regiao indicada...");  
   while(!(nfc.tagPresent())) {/**/} //aguarda o cartão   
   Serial.println("Cartao NFC detectado!");
 
-  newTag = nfc.read(); // le/guarda informações lidas do cartão no sensor
-  if (newTag.hasNdefMessage())
+  if(tipo == "00")
   {
-      conteudoMensagem = newTag.getNdefMessage(); //pega mensagem recebida do cartão
-      if(conteudoMensagem.getRecordCount() >= 2)
-      {
-          nfcIndentificationCode = getIdentificationCode(conteudoMensagem.getRecord(0));
-          if(testarCredencial(nfcIndentificationCode) != 1)
-          {        
-              nfcAcessType = getAcessType(conteudoMensagem.getRecord(1));
-              if(nfcAcessType.equals("01")) //acesso datado
-              {
-                    if(conteudoMensagem.getRecordCount() == 3)
-                    {              
-                        inputDay    = getDay(conteudoMensagem.getRecord(3));
-                        inputMonth  = getMonth(conteudoMensagem.getRecord(3));
-                        inputYear   = getYear(conteudoMensagem.getRecord(3));
+      if(gravarCartaoCompleto("00010000"))
+          Serial.println("Cartao gravado com Acesso Completo");
+  }
+  else if(tipo == "01")
+  {
+      if(gravarCartaoTemporario("00010000", 4, 12, 2017))
+        Serial.println("Cartao gravado com Acesso Temporario");
 
-                        if(compararDatas(inputDay, inputMonth, inputYear) == 1)
-                        {
-                            Serial.println("Acesso liberado");
-                            liberarAcesso();
-                            //TODO: Liberar o acesso a porta
-                        }
-                        else
-                        {
-                            Serial.println("Acesso expirado. Procurar a segunça!");
-                            negarAcesso();
-                            //TODO : Escrever código que 
-                        }
-                    }
-                    else
-                    {
-                        Serial.println("Cartao gravado incorretamente. Procurar a segunça!");
-                    }      
-              }
-              else if(nfcAcessType.equals("10")) //acesso limitado de vezes
-              {
-                    countLeft = getCountLeft(conteudoMensagem.getRecord(3));
-                    if(countLeft > 0)
-                    {
-                        Serial.println("Acesso liberado");
-                        countLeft = countLeft - 1;
-                        atualizarCartao(countLeft);
-                        liberarAcesso();
-                    }
-                    else
-                    {
-                        Serial.println("Acesso expirado. Procurar a segunça!");
-                        negarAcesso();
-                    }
-              }
-              else //acesso ilimitado de vezes
-              {  
-                  //Serial.println("Acesso liberado");
-                  liberarAcesso();
-              }
-          }
-          else
-          {
-              //Serial.println("Acesso negado!");  
-              negarAcesso();
-          }
-      }
-      else
-      {
-          Serial.println("Cartao gravado incorretamente. Procurar a segunça!");
-      }
+  }
+  else if(tipo == "10")
+  {
+      if(gravarCartaoLimitado("00010000", 2))
+        Serial.println("Cartao gravado com Acesso Limitado");
   }
   else
   {
-      Serial.println("Cartao NFC vazio, insira um cartao valido!");
+      Serial.println("Opcao invalida!");
   }
 
+  delay(5000);
+
+  Serial.println("-----------------------------------------------------------------------");
+  Serial.println("Aproxime o cartao NFC próximo a regiao indicada...");  
+  while(!(nfc.tagPresent())) {/**/} //aguarda o cartão   
+  Serial.println("Cartao NFC detectado!");
+  newTag = nfc.read();
   imprimirInformacoesTAG(newTag);
-  
 
+  /*
+  Serial.println("##################################################");  
+  Serial.println("##################################################");  
 
-  delay(3000);
+  Serial.println("Aproxime o cartao NFC próximo a regiao indicada...");  
+  //while(!(nfc.tagPresent())) {} //aguarda o cartão   
+  Serial.println("Cartao NFC detectado!");
+  */
+
+  delay(5000);
 }
 // --------------------Funções Utilizadas--------------------//--------------------Funções Utilizadas--------------------////
 void imprimirInformacoesTAG(NfcTag tag)
 {
   if (nfc.tagPresent())
   {
-    NfcTag _tag = tag;
-    Serial.println(_tag.getTagType());
-    Serial.print("UID: ");Serial.println(_tag.getUidString()); // Retrieves the Unique Identification from your tag
+    Serial.println(tag.getTagType());
+    Serial.print("UID: ");Serial.println(tag.getUidString()); // Retrieves the Unique Identification from your tag
+     if (tag.hasNdefMessage()) // If your tag has a message
+    {
+
+      NdefMessage message = tag.getNdefMessage();
+      Serial.print("\nThis Message in this Tag is ");
+      Serial.print(message.getRecordCount());
+      Serial.print(" NFC Tag Record");
+      if (message.getRecordCount() != 1) { 
+        Serial.print("s");
+      }
+      Serial.println(".");
+
+      // If you have more than 1 Message then it wil cycle through them
+      int recordCount = message.getRecordCount();
+      for (int i = 0; i < recordCount; i++)
+      {
+        Serial.print("\nNDEF Record ");Serial.println(i+1);
+        NdefRecord record = message.getRecord(i);
+
+        int payloadLength = record.getPayloadLength();
+        byte payload[payloadLength];
+        record.getPayload(payload);
+
+
+        String payloadAsString = ""; // Processes the message as a string vs as a HEX value
+        for (int c = 0; c < payloadLength; c++) {
+          payloadAsString += (char)payload[c];
+        }
+        Serial.print("  Information (as String): ");
+        Serial.println(payloadAsString);
+
+
+        String uid = record.getId();
+        if (uid != "") {
+          Serial.print("  ID: ");Serial.println(uid); // Prints the Unique Identification of the NFC Tag
+        }
+      }
+    }
   }
   else
     Serial.println("Cartao NFC nao detectado!");  
@@ -153,29 +167,29 @@ void imprimirInformacoesTAG(NfcTag tag)
 // ------------------------------------------------------------//
 // ------------------------------------------------------------//
 // ------------------------------------------------------------//
-int formatarTAG()//formata o cartão no formato NDEFMessagem com um record vazio
+void formatarTAG()//formata o cartão no formato NDEFMessagem com um record vazio
 {
+    Serial.println("Mantenha a TAG proxima ao sensor.");
+    while(!(nfc.tagPresent())) {/**/} //aguarda o cartão   
     if(nfc.tagPresent())
     { 
-        Serial.println("Mantenha a TAG proxima ao sensor.");
+
         Serial.println("Formatando TAG....!");
         if(nfc.format())
         {
             Serial.println("TAG formatada com sucesso!");
-            return 1;
         }
         else
         {
-            Serial.println("Erro ! TAG nao pode ser formatada!");     
-            return 0;
+            Serial.println("Erro ! TAG nao pode ser formatada!");
         }
 
     }
     else
     {
         Serial.println("TAG nao esta presente!");
-        return 0;
     }
+    delay(2000);
 }
 // ------------------------------------------------------------//
 // ------------------------------------------------------------//
@@ -247,7 +261,7 @@ int       getDay(NdefRecord record)
     int payloadLength = record.getPayloadLength();
     byte payload[payloadLength];
     record.getPayload(payload);
-    for (int c = 0; c < payloadLength; c++) 
+    for (int c = 0; c < 2; c++) 
     {
           day[c] = (char)payload[c];
     }
@@ -263,7 +277,7 @@ int       getMonth(NdefRecord record)
     int payloadLength = record.getPayloadLength();
     byte payload[payloadLength];
     record.getPayload(payload);
-    for (int c = 0; c < payloadLength; c++) 
+    for (int c = 3; c < 5; c++) 
     {
           month[c] = (char)payload[c];
     }
@@ -279,7 +293,7 @@ int       getYear(NdefRecord record)
     int payloadLength = record.getPayloadLength();
     byte payload[payloadLength];
     record.getPayload(payload);
-    for (int c = 0; c < payloadLength; c++) 
+    for (int c = 6; c < payloadLength; c++) 
     {
           year[c] = (char)payload[c];
     }
@@ -305,7 +319,7 @@ int       getCountLeft(NdefRecord record)
 // ------------------------------------------------------------//
 // ------------------------------------------------------------//
 // ------------------------------------------------------------//
-void      negarAcesso()
+void      negarAcesso() //TODO: Fazer lógica de acionamento
 {
     Serial.println("Acesso negado!");  
 }
@@ -313,7 +327,7 @@ void      negarAcesso()
 // ------------------------------------------------------------//
 // ------------------------------------------------------------//
 // ------------------------------------------------------------//
-void      liberarAcesso()
+void      liberarAcesso()//TODO: Fazer lógica de acionamento
 {
     Serial.println("Acesso liberado");
 }
@@ -405,3 +419,139 @@ int       compararDatas(int _day, int _month, int _year)
       return 0;
     }
 }
+// ------------------------------------------------------------//
+// ------------------------------------------------------------//
+// ------------------------------------------------------------//
+// ------------------------------------------------------------//
+int       gravarCartaoCompleto(String _ID)
+{
+    if(limparTAG())
+    {
+        if (nfc.tagPresent()) 
+        {
+            NdefMessage message = NdefMessage();
+            message.addTextRecord(_ID); // Codigo de Identificação
+            message.addTextRecord("00");  // Tipo de Acesso
+            //message.addTextRecord(String(_countLeft));  // Acessos Restantes
+
+            Serial.println("#####################################################");
+            Serial.println("Mensagem gravada:");
+            message.print();
+            Serial.println("#####################################################");
+
+            boolean success = nfc.write(message);
+
+            if (success) 
+            {
+                Serial.println("Cartao gravado com sucesso!"); // if it works you will see this message 
+                return 1;
+            } 
+            else 
+            {
+                Serial.println("Gravacao falhou!"); // If the the rewrite failed you will see this message
+                return 0;
+            }
+        }
+        else
+        {
+            return 0;          
+        }
+    }
+    else
+    {
+        return 0;
+    }
+}
+// ------------------------------------------------------------//
+// ------------------------------------------------------------//
+// ------------------------------------------------------------//
+// ------------------------------------------------------------//
+int       gravarCartaoTemporario(String _ID, int _day, int _month, int _year)
+{
+    if(limparTAG())
+    {
+        if (nfc.tagPresent()) 
+        {
+            NdefMessage message = NdefMessage();
+            message.addTextRecord(_ID); // Codigo de Identificação
+            message.addTextRecord("01");  // Tipo de Acesso
+            message.addTextRecord(String(_day)+"/"+String(_month)+"/"+String(_year));  // Dia/Mes/Ano
+           // message.addTextRecord();  // 
+            //message.addTextRecord();  //
+
+            Serial.println("#####################################################");
+            Serial.println("Mensagem gravada:");
+            message.print();
+            Serial.println("#####################################################");
+
+            boolean success = nfc.write(message);
+
+            if (success) 
+            {
+                Serial.println("Cartao gravado com sucesso!"); // if it works you will see this message 
+                return 1;
+            } 
+            else 
+            {
+                Serial.println("Gravacao falhou!"); // If the the rewrite failed you will see this message
+                return 0;
+            }
+        }
+        else
+        {
+            return 0;          
+        }
+    }
+    else
+    {
+        return 0;
+    }
+}
+// ------------------------------------------------------------//
+// ------------------------------------------------------------//
+// ------------------------------------------------------------//
+// ------------------------------------------------------------//
+int       gravarCartaoLimitado(String _ID, int n)
+{
+    if(limparTAG())
+    {
+        if (nfc.tagPresent()) 
+        {
+            NdefMessage message = NdefMessage();
+            message.addTextRecord(_ID); // Codigo de Identificação
+            message.addTextRecord("10");  // Tipo de Acesso
+            message.addTextRecord(String(n));  // Acessos Restantes
+
+            Serial.println("#####################################################");
+            Serial.println("Mensagem gravada:");
+            message.print();
+            Serial.println("#####################################################");
+
+            boolean success = nfc.write(message);
+
+            if (success) 
+            {
+                Serial.println("Cartao gravado com sucesso!"); // if it works you will see this message 
+                return 1;
+            } 
+            else 
+            {
+                Serial.println("Gravacao falhou!"); // If the the rewrite failed you will see this message
+                return 0;
+            }
+        }
+        else
+        {
+            return 0;          
+        }
+    }
+    else
+    {
+        return 0;
+    }
+    
+}
+// ------------------------------------------------------------//
+// ------------------------------------------------------------//
+// ------------------------------------------------------------//
+// ------------------------------------------------------------//
